@@ -328,7 +328,8 @@ class PANCardExtractor:
             print(f"  -> Rejected '{text}' due to containing digits")
             return False
 
-        # Should be at least 2 words for a full name, or one long word
+        # Full names may contain multiple words, but a single long
+        # OCR token can also be a legitimate name.
         words = cleaned.split()
         if len(words) < 2 and len(cleaned) < 6:
             print(f"  -> Rejected '{text}' due to insufficient length/words")
@@ -392,141 +393,699 @@ class PANCardExtractor:
                 dates.extend(matches)
         return dates
 
+    def normalize_for_matching(self, text: str) -> str:
+        """Normalize OCR text for robust field-label matching."""
+        text = text.upper()
+        text = text.replace("'", "")
+        text = re.sub(r"[^A-Z\u0900-\u097F]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    def is_father_label(self, text: str) -> bool:
+        normalized = self.normalize_for_matching(text)
+        compact = normalized.replace(" ", "")
+
+        father_patterns = [
+            "FATHER",
+            "FATHERS NAME",
+            "FATHER NAME",
+            "PITA",
+            "PITA KA NAAM",
+            "PITAJI",
+        ]
+
+        return any(
+            pattern in normalized or pattern.replace(" ", "") in compact
+            for pattern in father_patterns
+        )
+
+    def is_name_label(self, text: str) -> bool:
+        normalized = self.normalize_for_matching(text)
+        compact = normalized.replace(" ", "")
+
+        # Father's Name must never be treated as the applicant Name label.
+        if self.is_father_label(text):
+            return False
+
+        # Boilerplate fields containing "Name" are not applicant-name labels.
+        if "PERMANENT ACCOUNT NUMBER" in normalized:
+            return False
+
+        if "DATE OF BIRTH" in normalized:
+            return False
+
+        if "NAME" in normalized:
+            return True
+
+        # Common OCR corruption seen in PAN samples, e.g. "EraName".
+        if "ERANAME" in compact:
+            return True
+
+        return False
+
+    def is_dob_label(self, text: str) -> bool:
+        normalized = self.normalize_for_matching(text)
+        compact = normalized.replace(" ", "")
+
+        return (
+            "DATE OF BIRTH" in normalized
+            or "DATEOFBIRTH" in compact
+            or "DOB" in compact
+            or "BIRTH" in normalized
+            or "JANM" in normalized
+        )
+
+    def _horizontal_overlap(self, a: Dict, b: Dict) -> float:
+        """Estimate horizontal overlap between two OCR bounding boxes."""
+        try:
+            ax = [point[0] for point in a["bbox"]]
+            bx = [point[0] for point in b["bbox"]]
+
+            a_left, a_right = min(ax), max(ax)
+            b_left, b_right = min(bx), max(bx)
+
+            overlap = max(
+                0.0,
+                min(a_right, b_right) - max(a_left, b_left),
+            )
+
+            a_width = max(1.0, a_right - a_left)
+            b_width = max(1.0, b_right - b_left)
+
+            return overlap / min(a_width, b_width)
+        except Exception:
+            return 0.0
+
+    def _find_value_near_label(
+        self,
+        label_item: Dict,
+        text_data: List[Dict],
+        value_type: str = "name",
+    ) -> Optional[Dict]:
+        """
+        Find a field value using the actual PAN-card layout.
+
+        PAN layouts are not reliably represented by OCR result order.
+        We therefore use field-specific spatial relationships:
+          - applicant Name: value is usually above the label
+          - Father's Name: value is usually below the label
+          - DOB: value is usually above the label
+
+        Both directions are still considered, but the expected
+        direction gets a strong score bonus.
+        """
+        label_y = label_item["center_y"]
+        candidates = []
+
+        for item in text_data:
+            if item is label_item:
+                continue
+
+            text = item["text"].strip()
+
+            if not text:
+                continue
+
+            if value_type == "name":
+                # Never allow labels/boilerplate to become values.
+                normalized = self.normalize_for_matching(text)
+                compact = normalized.replace(" ", "")
+
+                blocked_words = [
+                    "NAME",
+                    "FATHER",
+                    "FATHERS",
+                    "DATE",
+                    "BIRTH",
+                    "SIGNATURE",
+                    "PERMANENT",
+                    "ACCOUNT",
+                    "NUMBER",
+                    "INCOME",
+                    "TAX",
+                    "DEPARTMENT",
+                    "GOVT",
+                    "GOVERNMENT",
+                    "INDIA",
+                ]
+
+                if any(
+                    word in normalized.split() or word in compact
+                    for word in blocked_words
+                ):
+                    continue
+
+                if not self.is_valid_name(
+                    text,
+                    min_confidence=0.65,
+                ):
+                    continue
+
+                cleaned = self.clean_name(text)
+
+                if not cleaned or len(cleaned) < 4:
+                    continue
+
+            elif value_type == "dob":
+                cleaned = self.clean_text(text)
+
+                if not any(
+                    re.search(pattern, cleaned)
+                    for pattern in self.date_patterns
+                ):
+                    continue
+
+            else:
+                continue
+
+            dy = item["center_y"] - label_y
+            abs_dy = abs(dy)
+
+            # PAN fields should be reasonably close to their labels.
+            if abs_dy > 250:
+                continue
+
+            overlap = self._horizontal_overlap(label_item, item)
+            center_distance = abs(
+                item["center_x"] - label_item["center_x"]
+            )
+
+            # Vertical proximity is useful, but horizontal alignment is
+            # especially important when several names exist on the card.
+            score = 0.0
+
+            score += max(
+                0.0,
+                1.0 - (abs_dy / 250.0),
+            ) * 35
+
+            score += overlap * 35
+
+            score += float(item["confidence"]) * 20
+
+            # Direction is field-specific on the PAN layout:
+            # - Father's Name -> value is typically BELOW the label.
+            # - Name -> value is typically ABOVE the OCR-corrupted Name label.
+            # - DOB -> value is typically ABOVE the Date of Birth label.
+            label_normalized = self.normalize_for_matching(
+                label_item["text"]
+            )
+            is_father_label = (
+                "FATHER" in label_normalized
+                or "FATHERS" in label_normalized
+            )
+
+            if value_type == "name":
+                if is_father_label:
+                    if dy > 0:
+                        score += 25
+                    else:
+                        score -= 20
+                else:
+                    if dy < 0:
+                        score += 25
+                    else:
+                        score -= 15
+            elif value_type == "dob":
+                if dy < 0:
+                    score += 15
+                else:
+                    score -= 10
+
+            # Strongly penalize candidates that are horizontally far away.
+            if center_distance > 350:
+                score -= 30
+            elif center_distance > 200:
+                score -= 10
+
+            candidates.append(
+                {
+                    "score": score,
+                    "item": item,
+                    "dy": dy,
+                    "overlap": overlap,
+                }
+            )
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda candidate: candidate["score"],
+            reverse=True,
+        )
+
+        best = candidates[0]
+
+        print(
+            f"  -> Spatial candidate for '{label_item['text']}': "
+            f"'{best['item']['text']}' "
+            f"(dy={best['dy']:.1f}, "
+            f"overlap={best['overlap']:.2f}, "
+            f"score={best['score']:.1f})"
+        )
+
+        return best["item"]
+
     def extract_names_with_keywords(
         self, text_data: List[Dict]
     ) -> Tuple[Optional[str], Optional[str]]:
-        # Try to find names by looking for keywords like "Name:" or "Father's Name:"
+        """
+        Extract applicant and father's names from PAN cards.
+
+        For the tested PAN layout:
+          - applicant name is above the Father's Name label
+          - father's name is below the Father's Name label
+          - OCR may corrupt the applicant "Name" label into text such
+            as "EraName"
+
+        The Father's Name label is therefore used as the strongest
+        anchor for separating the two names.
+        """
         name = None
         father_name = None
 
-        for i, item in enumerate(text_data):
-            text_lower = item["text"].lower()
+        sorted_data = sorted(
+            text_data,
+            key=lambda item: (item["center_y"], item["center_x"]),
+        )
 
-            # Check for applicant name
-            if "name" in text_lower and "father" not in text_lower:
-                if i + 1 < len(text_data):
-                    possible_name = text_data[i + 1]["text"].strip()
-                    if re.match(r"^[A-Z\s\.]+$", possible_name):
-                        name = possible_name
+        # ---------------------------------------------------------
+        # 1. Locate Father's Name label and extract father's value.
+        # ---------------------------------------------------------
+        father_label = None
 
-            # Check for father's name
-            if "father" in text_lower:
-                if i + 1 < len(text_data):
-                    possible_father = text_data[i + 1]["text"].strip()
-                    if re.match(r"^[A-Z\s\.]+$", possible_father):
-                        father_name = possible_father
+        for item in sorted_data:
+            if self.is_father_label(item["text"]):
+                father_label = item
+                break
+
+        if father_label is not None:
+            father_candidate = self._find_value_near_label(
+                father_label,
+                sorted_data,
+                value_type="name",
+            )
+
+            if father_candidate:
+                father_name = self.clean_name(
+                    father_candidate["text"]
+                )
+
+                print(
+                    f"  -> Label-based father's name: "
+                    f"{father_name}"
+                )
+
+        # ---------------------------------------------------------
+        # 2. Applicant name.
+        #
+        # Do NOT use a generic "Name" label here. On the tested
+        # template OCR recognizes the label as "EraName", and a
+        # generic spatial search can therefore select the father's
+        # name again.
+        #
+        # Instead, once Father's Name is known, the applicant name
+        # is the strongest valid name immediately ABOVE that label.
+        # ---------------------------------------------------------
+        if father_label is not None:
+            applicant_candidates = []
+
+            for item in sorted_data:
+                if item is father_label:
+                    continue
+
+                text = item["text"].strip()
+
+                if not text:
+                    continue
+
+                if father_name:
+                    cleaned = self.clean_name(text)
+                    if (
+                        cleaned
+                        and cleaned.lower() == father_name.lower()
+                    ):
+                        continue
+
+                normalized = self.normalize_for_matching(text)
+                compact = normalized.replace(" ", "")
+
+                blocked_words = [
+                    "NAME",
+                    "FATHER",
+                    "FATHERS",
+                    "DATE",
+                    "BIRTH",
+                    "SIGNATURE",
+                    "PERMANENT",
+                    "ACCOUNT",
+                    "NUMBER",
+                    "INCOME",
+                    "TAX",
+                    "DEPARTMENT",
+                    "GOVT",
+                    "GOVERNMENT",
+                    "INDIA",
+                ]
+
+                if any(
+                    word in normalized.split() or word in compact
+                    for word in blocked_words
+                ):
+                    continue
+
+                if not self.is_valid_name(
+                    text,
+                    min_confidence=0.65,
+                ):
+                    continue
+
+                # Applicant must be above the Father's Name label.
+                dy = item["center_y"] - father_label["center_y"]
+
+                if dy >= 0:
+                    continue
+
+                # Keep the search local to the field.
+                if abs(dy) > 220:
+                    continue
+
+                overlap = self._horizontal_overlap(
+                    father_label,
+                    item,
+                )
+
+                # Strong preference for the closest horizontally
+                # aligned valid name above Father's Name.
+                score = (
+                    max(0.0, 1.0 - abs(dy) / 220.0) * 50
+                    + overlap * 30
+                    + float(item["confidence"]) * 20
+                )
+
+                applicant_candidates.append(
+                    {
+                        "item": item,
+                        "score": score,
+                    }
+                )
+
+            if applicant_candidates:
+                applicant_candidates.sort(
+                    key=lambda candidate: candidate["score"],
+                    reverse=True,
+                )
+
+                candidate = applicant_candidates[0]["item"]
+                name = self.clean_name(candidate["text"])
+
+                print(
+                    f"  -> Applicant name anchored above "
+                    f"Father's Name: {name}"
+                )
+
+        # ---------------------------------------------------------
+        # 3. If the Father's Name label wasn't detected, use the
+        # existing Name-label logic as a fallback.
+        # ---------------------------------------------------------
+        if not name:
+            for item in sorted_data:
+                if not self.is_name_label(item["text"]):
+                    continue
+
+                # Ignore OCR-corrupted labels that are known to
+                # represent the Name field itself rather than a
+                # useful value anchor.
+                normalized = self.normalize_for_matching(
+                    item["text"]
+                )
+                compact = normalized.replace(" ", "")
+
+                if (
+                    "ERANAME" in compact
+                    or "FATHERS" in compact
+                    or "FATHER" in compact
+                ):
+                    continue
+
+                candidate = self._find_value_near_label(
+                    item,
+                    sorted_data,
+                    value_type="name",
+                )
+
+                if candidate:
+                    candidate_name = self.clean_name(
+                        candidate["text"]
+                    )
+
+                    if (
+                        father_name
+                        and candidate_name.lower()
+                        == father_name.lower()
+                    ):
+                        continue
+
+                    name = candidate_name
+
+                    print(
+                        f"  -> Fallback label-based applicant "
+                        f"name: {name}"
+                    )
+                    break
 
         return name, father_name
 
     def extract_names_positional(
         self, text_data: List[Dict]
     ) -> Tuple[Optional[str], Optional[str]]:
-        # If keywords don't work, try to guess names based on position and quality
+        """
+        Fallback when OCR does not reliably recognize field labels.
+
+        On a normal PAN card, the applicant name appears above the
+        father's name, so valid candidates are sorted vertically.
+        """
         valid_candidates = []
 
         print("\n=== Analyzing candidates for positional extraction ===")
 
         for item in text_data:
-            print(f"Checking: '{item['text']}' (confidence: {item['confidence']:.2f})")
+            text = item["text"]
 
-            # Be pickier about what we consider valid names
+            print(
+                f"Checking: '{text}' "
+                f"(confidence: {item['confidence']:.2f})"
+            )
+
+            # Do not require two words. OCR can return:
+            # "DMANIKANDAN" / "DURAISAMY"
+            # Reject obvious field labels / OCR fragments before
+            # running the generic name heuristic.
+            normalized = self.normalize_for_matching(text)
+            compact = normalized.replace(" ", "")
+
+            label_words = [
+                "NAME",
+                "FATHER",
+                "FATHERS",
+                "DATE",
+                "BIRTH",
+                "SIGNATURE",
+                "PERMANENT",
+                "ACCOUNT",
+                "NUMBER",
+                "INCOME",
+                "TAX",
+                "DEPARTMENT",
+                "GOVT",
+                "GOVERNMENT",
+                "INDIA",
+            ]
+
+            contains_label_word = any(
+                word in normalized.split() or word in compact
+                for word in label_words
+            )
+
+            if contains_label_word:
+                print(
+                    f"  -> Rejected '{text}' as field-label/OCR noise"
+                )
+                continue
+
             if (
-                item["confidence"] >= 0.8
-                and self.is_valid_name(item["text"])
-                and len(item["text"].split()) >= 2
+                item["confidence"] >= 0.65
+                and self.is_valid_name(text, min_confidence=0.65)
             ):
+                cleaned_name = self.clean_name(text)
 
-                cleaned_name = self.clean_name(item["text"])
+                if cleaned_name and len(cleaned_name) >= 4:
+                    valid_candidates.append(
+                        {
+                            "name": cleaned_name,
+                            "center_y": item["center_y"],
+                            "center_x": item["center_x"],
+                            "confidence": item["confidence"],
+                            "item": item,
+                        }
+                    )
+                    print(
+                        f"  -> Added to candidates: "
+                        f"{cleaned_name}"
+                    )
 
-                # Make sure the cleaned name is still reasonable
-                if cleaned_name and len(cleaned_name) > 5:
-                    valid_candidates.append(cleaned_name)
-                    print(f"  -> Added to candidates: {cleaned_name}")
-
-        # Remove duplicates but keep order
-        seen = set()
+        # Remove duplicates while preserving spatial information.
         unique_candidates = []
+        seen = set()
+
         for candidate in valid_candidates:
-            if candidate.lower() not in seen:
-                seen.add(candidate.lower())
+            key = candidate["name"].lower()
+
+            if key not in seen:
+                seen.add(key)
                 unique_candidates.append(candidate)
 
-        print(f"\n  -> Final valid name candidates: {unique_candidates}")
+        unique_candidates.sort(
+            key=lambda candidate: candidate["center_y"]
+        )
 
-        # Usually on PAN cards, cardholder name comes first, then father's name
+        print("\n  -> Final valid name candidates:")
+
+        for candidate in unique_candidates:
+            print(
+                f"     {candidate['name']} "
+                f"(y={candidate['center_y']:.1f}, "
+                f"confidence={candidate['confidence']:.2f})"
+            )
+
         name = None
         father_name = None
 
         if len(unique_candidates) >= 1:
-            # Sort by vertical position to get the right order
-            candidate_with_pos = []
-            for candidate in unique_candidates:
-                # Find where this candidate appears in the original data
-                for item in text_data:
-                    if self.clean_name(item["text"]) == candidate:
-                        candidate_with_pos.append((candidate, item["center_y"]))
-                        break
+            name = unique_candidates[0]["name"]
 
-            # Sort from top to bottom
-            candidate_with_pos.sort(key=lambda x: x[1])
-            sorted_candidates = [candidate for candidate, _ in candidate_with_pos]
-
-            # First valid name is usually the cardholder
-            name = sorted_candidates[0] if len(sorted_candidates) >= 1 else None
-
-            # Second valid name is usually father's name
-            if len(sorted_candidates) >= 2:
-                father_name = sorted_candidates[1]
+        if len(unique_candidates) >= 2:
+            father_name = unique_candidates[1]["name"]
 
         return name, father_name
 
-    def find_names_improved(self, text_data: List[Dict]) -> Dict[str, str]:
-        # Main name extraction logic - tries multiple approaches
-        sorted_data = sorted(text_data, key=lambda x: x["center_y"])
+    def find_names_improved(
+        self, text_data: List[Dict]
+    ) -> Dict[str, str]:
+        """
+        Robust PAN name extraction.
 
-        print("\n=== Analyzing text for names ===")
+        Priority:
+        1. Label + spatial relationship
+        2. Positional fallback
+        3. Sanity checks
+        """
+        sorted_data = sorted(
+            text_data,
+            key=lambda item: (item["center_y"], item["center_x"]),
+        )
 
-        # Try keyword-based approach first (more reliable)
-        name, father_name = self.extract_names_with_keywords(sorted_data)
+        print("\n=== PAN name extraction ===")
 
-        # Fall back to positional approach if we're missing names
+        name, father_name = self.extract_names_with_keywords(
+            sorted_data
+        )
+
         if not name or not father_name:
-            print("\n=== Using positional extraction as fallback ===")
-            pos_name, pos_father = self.extract_names_positional(sorted_data)
+            print(
+                "\n=== Label extraction incomplete; "
+                "using positional extraction as fallback ==="
+            )
 
-            if not name:
+            pos_name, pos_father = self.extract_names_positional(
+                sorted_data
+            )
+
+            if not name and pos_name:
                 name = pos_name
-                if name:
-                    print(f"  -> Assigned positional name: {name}")
+                print(f"  -> Assigned positional name: {name}")
 
-            if not father_name:
-                father_name = pos_father
-                if father_name:
-                    print(f"  -> Assigned positional father's name: {father_name}")
+            if not father_name and pos_father:
+                if not name or pos_father.lower() != name.lower():
+                    father_name = pos_father
+                    print(
+                        f"  -> Assigned positional father's name: "
+                        f"{father_name}"
+                    )
 
-        # Sanity check - if both names are identical, something went wrong
         if name and father_name and name.lower() == father_name.lower():
-            print("  -> Names are identical, looking for alternative...")
-            all_valid_names = []
-            for item in sorted_data:
-                if self.is_valid_name(item["text"]) and item["confidence"] >= 0.8:
-                    clean_candidate = self.clean_name(item["text"])
-                    if clean_candidate and clean_candidate.lower() not in [
-                        name.lower()
-                    ]:
-                        all_valid_names.append(clean_candidate)
+            print(
+                "  -> Applicant and father's names are identical; "
+                "discarding father's name."
+            )
+            father_name = ""
 
-            if all_valid_names:
-                father_name = all_valid_names[0]
-                print(f"  -> Updated father's name to: {father_name}")
+        return {
+            "name": name or "",
+            "father_name": father_name or "",
+        }
 
-        return {"name": name or "", "father_name": father_name or ""}
+    def find_date_of_birth(
+        self, text_data: List[Dict]
+    ) -> Optional[str]:
+        """
+        Find DOB using the Date of Birth label first.
+        Falls back to the first valid date if the label is unavailable.
+        """
+        sorted_data = sorted(
+            text_data,
+            key=lambda item: (item["center_y"], item["center_x"]),
+        )
+
+        # Label-based extraction.
+        for item in sorted_data:
+            if not self.is_dob_label(item["text"]):
+                continue
+
+            candidate = self._find_value_near_label(
+                item,
+                sorted_data,
+                value_type="dob",
+            )
+
+            if candidate:
+                cleaned = self.clean_text(candidate["text"])
+
+                for pattern in self.date_patterns:
+                    match = re.search(pattern, cleaned)
+
+                    if match and self.validate_date(match.group()):
+                        print(
+                            f"  -> Label-based DOB: {match.group()}"
+                        )
+                        return match.group()
+
+        # Fallback.
+        dates = self.find_dates(sorted_data)
+
+        valid_dates = [
+            date for date in dates
+            if self.validate_date(date)
+        ]
+
+        if valid_dates:
+            print(
+                f"  -> Fallback DOB: {valid_dates[0]}"
+            )
+            return valid_dates[0]
+
+        return None
 
     def validate_pan(self, pan: str) -> bool:
-        # Check if PAN number follows the correct format
+        """Validate the basic structural format of an Indian PAN."""
         if not pan:
             return False
-        return bool(re.match(r"^[A-Z]{5}[0-9]{4}[A-Z]{1}$", pan))
+
+        pan = pan.upper().replace(" ", "")
+
+        return bool(
+            re.fullmatch(r"[A-Z]{5}[0-9]{4}[A-Z]", pan)
+        )
 
     def validate_date(self, date_str: str) -> bool:
         # Check if date is valid and reasonable for a birth date
@@ -560,30 +1119,102 @@ class PANCardExtractor:
             for item in text_data:
                 print(f"  - {item['text']} (confidence: {item['confidence']:.2f})")
 
-            # Extract different types of information
+            # Extract different types of information.
             pan_number = self.find_pan_number(text_data)
-            dates = self.find_dates(text_data)
             names = self.find_names_improved(text_data)
+            date_of_birth = self.find_date_of_birth(text_data)
 
-            # Build the final result
+            # Build the final result.
             result = {
-                "pan_number": pan_number if self.validate_pan(pan_number) else None,
+                "pan_number": (
+                    pan_number
+                    if self.validate_pan(pan_number)
+                    else None
+                ),
                 "name": names.get("name", ""),
                 "father_name": names.get("father_name", ""),
-                "date_of_birth": None,
-                "extraction_confidence": (
-                    "high" if pan_number and names.get("name") else "medium"
-                ),
+                "date_of_birth": date_of_birth,
+                "extraction_confidence": "low",
                 "raw_text": [item["text"] for item in text_data],
             }
 
-            # Find valid birth date from extracted dates
-            valid_dates = [date for date in dates if self.validate_date(date)]
-            if valid_dates:
-                result["date_of_birth"] = valid_dates[0]
+            # ---------------------------------------------------------
+            # Field-level OCR confidence
+            # ---------------------------------------------------------
+            field_confidence = {
+                "pan_number": 0.0,
+                "name": 0.0,
+                "father_name": 0.0,
+                "date_of_birth": 0.0,
+            }
 
-            # Calculate confidence score based on what we found
+            # PAN confidence.
+            if result["pan_number"]:
+                normalized_pan = (
+                    result["pan_number"]
+                    .upper()
+                    .replace(" ", "")
+                )
+
+                for item in text_data:
+                    normalized_text = (
+                        self.clean_text(item["text"])
+                        .upper()
+                        .replace(" ", "")
+                    )
+
+                    if normalized_pan == normalized_text:
+                        field_confidence["pan_number"] = float(
+                            item["confidence"]
+                        )
+                        break
+
+            # Applicant-name confidence.
+            if result["name"]:
+                for item in text_data:
+                    if (
+                        self.clean_name(item["text"]).lower()
+                        == result["name"].lower()
+                    ):
+                        field_confidence["name"] = float(
+                            item["confidence"]
+                        )
+                        break
+
+            # Father's-name confidence.
+            if result["father_name"]:
+                for item in text_data:
+                    if (
+                        self.clean_name(item["text"]).lower()
+                        == result["father_name"].lower()
+                    ):
+                        field_confidence["father_name"] = float(
+                            item["confidence"]
+                        )
+                        break
+
+            # DOB confidence.
+            if result["date_of_birth"]:
+                for item in text_data:
+                    if result["date_of_birth"] in self.clean_text(
+                        item["text"]
+                    ):
+                        field_confidence["date_of_birth"] = float(
+                            item["confidence"]
+                        )
+                        break
+
+            result["field_confidence"] = field_confidence
+
+            # ---------------------------------------------------------
+            # Completeness score
+            # ---------------------------------------------------------
+            #
+            # IMPORTANT:
+            # This is a completeness score, NOT a probability that
+            # the extracted values are correct.
             confidence_score = 0
+
             if result["pan_number"]:
                 confidence_score += 40
             if result["name"]:
@@ -594,10 +1225,14 @@ class PANCardExtractor:
                 confidence_score += 10
 
             result["confidence_score"] = confidence_score
+            result["confidence_score_type"] = "completeness"
+
             result["extraction_confidence"] = (
                 "high"
-                if confidence_score >= 70
-                else "medium" if confidence_score >= 40 else "low"
+                if confidence_score >= 90
+                else "medium"
+                if confidence_score >= 60
+                else "low"
             )
 
             return result
