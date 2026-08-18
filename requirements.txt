@@ -1,20 +1,12 @@
-# Core OCR libraries
-pytesseract==0.3.10
-paddlepaddle==3.0.0
-easyocr==1.7.1
+# Core OCR engine
+paddlepaddle>=3.0.0
+paddleocr>=2.7.0
 
 # Image processing
-opencv-python==4.6.0.66
-numpy==1.26.4
+opencv-python>=4.6.0
+numpy>=1.24.0
 Pillow>=9.0.0
 
-# Text processing
-fuzzywuzzy==0.18.0
-python-Levenshtein==0.12.2  # For faster fuzzywuzzy operations
-
-# Optional dependencies (uncomment if needed)
-# tensorflow==2.15.0  # For advanced deep learning models
-# pyannote.audio==3.0.0  # For audio processing
-# transformers==4.36.0  # For transformer-based models
-# boto3==1.26.106  # For AWS S3 integration
-# scipy==1.10.1  # For scientific computing
+# Tesseract (used by passport, driving_licence, voter_id)
+pytesseract>=0.3.10
+pymupdf>=1.22.0

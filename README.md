@@ -1,243 +1,261 @@
 # OpenBharatOCR
-[![Build status](https://github.com/essentiasoftserv/openbharatocr/actions/workflows/main.yml/badge.svg)](https://github.com/essentiasoftserv/openbharatocr/actions/workflows/main.yml)
 
-OpenBharatOCR is an open-source Python library specifically designed for optical character recognition (OCR) of Indian government documents.
+A **local, offline OCR library** for Indian government documents.
+All processing happens on your machine — no document data is sent to any external service.
 
-## Key Features
-- **Comprehensive Document Support**: Extract text from major Indian government documents including Aadhaar Card, PAN Card, Driving License, Passport, Voter ID, and more
-- **Multi-Language OCR**: Support for English and Hindi text extraction
-- **Advanced Image Processing**: Built-in preprocessing techniques for enhanced accuracy
-- **Multiple OCR Engines**: Leverages PaddleOCR, EasyOCR, and Tesseract for optimal results
-- **Pattern Matching**: Document-specific field extraction with validation 
+---
 
-## Prerequisites
+## Supported documents
 
-- **Python**: 3.6 or later
-- **Operating System**: Linux (Ubuntu/Debian preferred), Windows (via WSL2), or macOS
-- **System Dependencies**: Tesseract OCR (for pytesseract functionality)
+| Document | Fields extracted |
+|---|---|
+| **PAN card** | PAN number, name, father's name, date of birth |
+| **Aadhaar (front)** | Name, date of birth, gender, Aadhaar number |
+| **Aadhaar (back)** | Relative name, relation type, address, pincode |
+| **Passport (front)** | Passport number, name, gender, nationality, DOB, issue date, expiry, place of birth/issue, MRZ |
+| **Passport (back)** | Father/guardian name, mother name, spouse name, address, pincode, file number |
+| Driving licence | Licence number, name, dates, address, vehicle authorisations |
+| Voter ID (front/back) | Voter ID, names, gender, DOB, address |
+| Vehicle registration | RC details |
+| Water bill | Bill details |
+| Birth certificate | Certificate fields |
+| Degree certificate | Certificate fields |
+
+---
 
 ## Installation
 
-### Install from PyPI
+### Prerequisites
+
+- Python 3.8+
+- Tesseract OCR (for passport, driving licence, voter ID)
 
 ```bash
-pip install openbharatocr
+# Ubuntu / Debian
+sudo apt-get install tesseract-ocr
+
+# macOS
+brew install tesseract
 ```
 
-### Development Setup
+### Install the library
 
-1. **Clone the repository:**
 ```bash
-git clone https://github.com/essentiasoftserv/openbharatocr.git
-cd openbharatocr
-```
+python -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
 
-2. **Create a virtual environment:**
-```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. **Install dependencies:**
-```bash
 pip install -r requirements.txt
-```
-
-4. **Install in development mode:**
-```bash
 pip install -e .
 ```
 
-## Supported Documents
+---
 
-### PAN Card
-Extract information from Permanent Account Number cards.
+## Model setup
+
+PaddleOCR downloads its models on the **first run** and caches them locally.
+After that, the library works fully offline.
 
 ```python
-import openbharatocr 
-
-# Extract PAN card details
-result = openbharatocr.pan(image_path)
-# Returns: {'name': str, 'father_name': str, 'dob': str, 'pan_number': str}
+# Trigger the one-time download
+import openbharatocr
+openbharatocr.pan("any_image.jpg")   # models downloaded here
 ```
 
-### Aadhaar Card
-Process both front and back sides of Aadhaar cards.
+To point PaddleOCR at a custom model directory, set the environment variable:
 
-```python
-import openbharatocr 
-
-# Front side
-front_result = openbharatocr.front_aadhaar(image_path)
-# Returns: {'name': str, 'dob': str, 'gender': str, 'aadhaar_number': str}
-
-# Back side
-back_result = openbharatocr.back_aadhaar(image_path)
-# Returns: {'address': str, 'aadhaar_number': str, 'pin_code': str}
+```bash
+export PADDLE_HOME=/path/to/your/paddle/cache
 ```
 
-### Driving License
-Extract details from Indian driving licenses.
+---
+
+## Usage
+
+### PAN card
 
 ```python
-import openbharatocr 
+import openbharatocr
 
-result = openbharatocr.driving_licence(image_path)
-# Returns: {'name': str, 'license_number': str, 'dob': str, 'validity': str, 'address': str}
+result = openbharatocr.pan("pan.jpg")
+print(result["pan_number"])
+print(result["name"])
+print(result["father_name"])
+print(result["date_of_birth"])
+print(result["extraction_confidence"])   # "high" / "medium" / "low"
+```
+
+### Aadhaar — front only
+
+```python
+result = openbharatocr.aadhaar("aadhaar-front.jpeg")
+fields = result["fields"]
+print(fields["name"])
+print(fields["date_of_birth"])
+print(fields["gender"])
+print(fields["aadhaar_number"])
+```
+
+### Aadhaar — front + back
+
+```python
+result = openbharatocr.aadhaar("aadhaar-front.jpeg", "aadhaar-back.jpeg")
+fields = result["fields"]
+print(fields["address"])
+print(fields["pincode"])
+```
+
+### Passport — front only
+
+```python
+result = openbharatocr.passport("passport-front.jpeg")
+print(result["passport_number"])
+print(result["name"])
+print(result["date_of_birth"])
+print(result["expiry_date"])
+print(result["mrz"])
+```
+
+### Passport — front + back
+
+```python
+result = openbharatocr.passport("passport-front.jpeg", "passport-back.jpeg")
+print(result["father_name"])
+print(result["mother_name"])
+print(result["address"])
+```
+
+### OCRClient (object-oriented API)
+
+```python
+client = openbharatocr.OCRClient()
+pan_result      = client.pan("pan.jpg")
+aadhaar_result  = client.aadhaar("aadhaar-front.jpeg")
+passport_result = client.passport("front.jpeg", "back.jpeg")
+```
+
+---
+
+## Output format
+
+### PAN
+
+```json
+{
+  "pan_number": "ABCDE1234F",
+  "name": "Amit Kumar Sharma",
+  "father_name": "Rajesh Kumar Sharma",
+  "date_of_birth": "15/08/1990",
+  "extraction_confidence": "high",
+  "confidence_score": 100,
+  "confidence_score_type": "completeness",
+  "field_confidence": {
+    "pan_number": 0.97,
+    "name": 0.91,
+    "father_name": 0.88,
+    "date_of_birth": 0.93
+  },
+  "raw_text": ["GOVT OF INDIA", "AMIT KUMAR SHARMA", "..."]
+}
+```
+
+### Aadhaar (front)
+
+```json
+{
+  "document_type": "aadhaar_front",
+  "fields": {
+    "name": "Amit Kumar Sharma",
+    "date_of_birth": "15/08/1990",
+    "gender": "Male",
+    "aadhaar_number": "1234 5678 9012"
+  },
+  "raw_text": "..."
+}
 ```
 
 ### Passport
-Process Indian passport information pages.
 
-```python
-import openbharatocr 
-
-result = openbharatocr.passport(image_path)
-# Returns: {'name': str, 'passport_number': str, 'dob': str, 'doi': str, 'doe': str}
+```json
+{
+  "passport_number": "C7162010",
+  "name": "Biswanath Adhikari",
+  "surname": "Adhikari",
+  "given_names": "Biswanath",
+  "gender": "Male",
+  "nationality": "IND",
+  "date_of_birth": "01-01-1989",
+  "date_of_issue": "01-01-2015",
+  "expiry_date": "28-01-2035",
+  "place_of_birth": "KOLKATA",
+  "place_of_issue": "DELHI",
+  "father_name": "Ramesh Adhikari",
+  "mother_name": "",
+  "spouse_name": "",
+  "address": {"raw": "...", "lines": [], "pincode": ""},
+  "file_number": "",
+  "mrz": {"line1": "P<IND...", "line2": "C716...", "valid": true},
+  "extraction_confidence": "high",
+  "raw_text_front": "...",
+  "raw_text_back": "..."
+}
 ```
 
-### Voter ID
-Extract information from both sides of Voter ID cards.
+---
 
-```python
-import openbharatocr 
-import os
+## Developer test script
 
-# Note: Requires YOLO model files for enhanced accuracy
-# Set environment variables for YOLO model paths:
-os.environ['YOLO_CFG'] = 'path/to/yolo.cfg'
-os.environ['YOLO_WEIGHT'] = 'path/to/yolo.weights'
-
-# Front side
-front_result = openbharatocr.voter_id_front(image_path)
-# Returns: {'name': str, 'voter_id': str, 'father_name': str, 'dob': str}
-
-# Back side
-back_result = openbharatocr.voter_id_back(image_path)
-# Returns: {'address': str, 'voter_id': str}
-```
-
-### Vehicle Registration Card/Certificate
-Extract vehicle registration details.
-
-```python
-import openbharatocr 
-
-result = openbharatocr.vehicle_registration(image_path)
-# Returns: {'registration_number': str, 'owner_name': str, 'vehicle_model': str, 
-#          'registration_date': str, 'chassis_number': str, 'engine_number': str}
-```
-
-### Water Bill
-Process water utility bills.
-
-```python
-import openbharatocr 
-
-result = openbharatocr.water_bill(image_path)
-# Returns: {'consumer_number': str, 'name': str, 'address': str, 
-#          'bill_date': str, 'amount': str}
-```
-
-### Birth Certificate
-Extract information from birth certificates.
-
-```python
-import openbharatocr 
-
-result = openbharatocr.birth_certificate(image_path)
-# Returns: {'name': str, 'dob': str, 'father_name': str, 'mother_name': str, 
-#          'registration_number': str, 'registration_date': str}
-```
-
-### Degree Certificate
-Process educational degree certificates.
-
-```python
-import openbharatocr 
-
-result = openbharatocr.degree(image_path)
-# Returns: {'name': str, 'degree': str, 'university': str, 'year': str, 'grade': str}
-```
-
-### Bank Passbook
-Extract bank passbook details (if available).
-
-```python
-import openbharatocr 
-
-# Note: Check if passbook functionality is exposed in the API
-result = openbharatocr.passbook(image_path)  # If available
-# Returns: {'account_number': str, 'name': str, 'bank_name': str, 'branch': str, 'ifsc': str}
-```
-
-## Additional Resources
-
-### YOLO Models for Enhanced Voter ID Processing
-For optimal Voter ID extraction, download the following YOLO v3 models:
-
-- **Configuration File**: [Download YOLO Config](https://drive.google.com/file/d/1SEst2lVoFDOgUVLZ5kje9GTb2tHRA8U-/view?usp=sharing)
-- **Weights File**: [Download YOLO Weights](https://drive.google.com/file/d/1cGGstycfogmO6O7ToB2DAEXOgTWVgINh/view?usp=drive_link)
-
-After downloading, set the file paths in environment variables:
-```python
-import os
-os.environ['YOLO_CFG'] = '/path/to/yolov3.cfg'
-os.environ['YOLO_WEIGHT'] = '/path/to/yolov3.weights'
-```
-
-## Contributing
-
-We welcome contributions to OpenBharatOCR! Whether you're fixing bugs, improving documentation, or adding new features, your help is appreciated.
-
-### Development Guidelines
-
-1. **Fork and Clone**: Fork the repository and clone your fork locally
-2. **Create a Branch**: Create a feature branch for your changes
-3. **Write Tests**: Add tests for any new functionality
-4. **Follow Code Style**: Use Black formatter and follow PEP 8 guidelines
-5. **Run Pre-commit Hooks**: Before committing, run:
-   ```bash
-   pre-commit run --all-files
-   ```
-
-### Testing
-
-Run the test suite:
 ```bash
-pytest openbharatocr/unit_tests/
+python test_ocr.py pan      openbharatocr/test_images/pan_final.jpg
+python test_ocr.py aadhaar  openbharatocr/test_images/aadhaar-front.jpeg
+python test_ocr.py passport openbharatocr/test_images/pass-front.jpeg
+python test_ocr.py passport openbharatocr/test_images/pass-front.jpeg \
+                            openbharatocr/test_images/pass-back.jpeg
 ```
 
-Run code quality checks:
+## Running unit tests
+
 ```bash
-# Format code with Black
-black openbharatocr/
-
-# Check for spelling errors
-codespell
-
-# Run all pre-commit hooks
-pre-commit run --all-files
+pip install pytest
+pytest openbharatocr/unit_tests/ -v
 ```
 
-### Reporting Issues
+---
 
-Found a bug or have a feature request? Please create an issue:
-[https://github.com/essentiasoftserv/openbharatocr/issues](https://github.com/essentiasoftserv/openbharatocr/issues)
+## Offline / local processing
+
+OpenBharatOCR processes documents entirely on your machine.
+
+- **PAN and Aadhaar**: use PaddleOCR. Models are downloaded once to the local cache on first run; subsequent calls are fully offline.
+- **Passport, driving licence, voter ID**: use Tesseract, which is a local binary with no network dependency.
+- **No API keys required.**
+- **No document data is sent anywhere.**
+
+---
+
+## Debug logging
+
+To enable verbose logging (useful during development):
+
+```python
+import logging
+logging.basicConfig(level=logging.DEBUG)
+```
+
+Normal usage is silent — no PII is written to stdout or logs.
+
+---
+
+## Limitations
+
+- OCR accuracy depends on image quality. Use clear, well-lit, unobscured images.
+- PAN extraction uses spatial heuristics; unusual card layouts may yield lower confidence.
+- Aadhaar masking (where the first 8 digits are hidden) is not handled.
+- Passport MRZ parsing assumes the standard ICAO TD3 format.
+- Hindi/Devanagari fields on PAN cards are partially supported.
+- PaddleOCR models are large (~500 MB). Ensure sufficient disk space.
+
+---
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-## Authors
-
-- **Kunal Kumar Kushwaha** - [essentia.dev](http://www.essentia.dev)
-- **Contributors** - See [Contributors](https://github.com/essentiasoftserv/openbharatocr/graphs/contributors)
-
-## Acknowledgments
-
-- PaddleOCR team for the excellent OCR engine
-- EasyOCR project for multilingual support
-- Tesseract OCR community
-- All contributors who have helped improve this project
-
+Apache 2.0 — see [LICENSE](LICENSE).

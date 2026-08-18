@@ -1,0 +1,326 @@
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+
+View and prove your immigration status
+
+Your immigration
+status (eVisa)
+
+Name DEEPTHI
+RAJESH KUMAR
+DARLA
+
+Date of 28 October 1995
+birth
+
+National IND
+
+ity
+
+Status Visitor - British-
+Irish visa scheme
+
+Valid 6 August 2026
+from
+
+Valid 6 February 2027
+until
+
+Number Multiple
+of
+
+entries
+
+allowed
+
+Prove your status
+
+If you need to prove your
+immigration status to
+
+someone, you can do this
+online with a share code.
+
+€TIHAD
+
+Mrs Deepthi Rajesh Kumar Darla
+
+Thank you for your booking.
+We look forward to welcoming you soon.
+
+%. EY 239 - Etihad Airways
+
+Bengaluru
+
+BLR
+
+22:15
+
+12 Aug 2026
+Kempegowda Intl
+Terminal 2
+
+oh
+
+03h 50m - Nonstop
+Boeing 787-9
+
+%. EY 61° Etihad Airways
+
+Abu Dhabi
+
+AUH ©
+
+02:20
+
+13 Aug 2026
+
+Zayed International Airport
+Terminal A
+
+oh
+
+07h 40m - Nonstop
+Airbus A380-800
+
+%. EY 62° Etihad Airways
+
+London
+
+LHR
+
+09:30
+
+31 Aug 2026
+Heathrow
+Terminal 4
+
+oh
+
+07h 05m - Nonstop
+Airbus A380-800
+
+%. EY 232 - Etihad Airways
+
+Abu Dhabi
+
+AUH ©
+
+21:35
+
+31 Aug 2026
+
+Zayed International Airport
+Terminal A
+
+oh
+
+04h 10m - Nonstop
+Boeing 787-9
+
+Etihad reference 95W8ZZ
+
+Ticket number 607 2417031647
+Date of issue 04 Jul 2026
+
+Electronic ticket receipt
+
+Issuing office Etihad Airways, United Arab Emirates
+
+AUH BLR
+All times are local to each city
+Abu Dhabi Fare type
+4 AU H Seat
+Cabin
+00:35 Checked
+13 Aug 2026
+Zayed International Airport
+Terminal A Status
+London _ Fare type
+4 L H R Seat
+Cabin
+07:00 Checked
+13 Aug 2026
+Heathrow
+Terminal 4 — Status
+Abu Dhabi — Fare type
+4 AU H Seat
+Cabin
+19:35 Checked
+31 Aug 2026
+Zayed International Airport
+Terminal A Status
+Bengaluru — Fare type
+4 B L R Seat
+Cabin
+03:15 Checked
+01 Sep 2026
+Kempegowda Intl
+Terminal 2 — Status
+
+To receive real-time travel updates, download the Etihad app
+
+This E-ticket is valid for 1 year from the date of issue
+
+Value
+
+7kg
+
+30kg
+
+CONFIRMED
+
+Value
+
+7kg
+
+30kg
+
+CONFIRMED
+
+Value
+
+7kg
+
+30kg
+
+CONFIRMED
+
+Value
+
+7kg
+
+30kg
+
+CONFIRMED
+
+—
+Goa
+eae
+eee
+es
+
+
+& Back
+
+From Date
+
+01-Apr-2026
+
+PAN Number
+
+BYUPD4140H
+
+Search Result for BYUPD4140H ()
+
+To Date Generated Date
+
+06-Aug-2026 07-Aug-2026
+
+Total Amount Remitted (in US
+Total Limit (in US $) $)
+
+NA Details for this PAN is not
+available
+
+Time
+3:44:36 PM
+Total Amount Remitted (in INR
+%)
+
+Details for this PAN is not
+available
+
+PACIFIC EXCHANGE PVT LTD.,
+
+#M86 & 86/1, Irwin Road, Mandi Mohalla, Mysore 570001
+Ph: 0821-4194013, 9886383969
+
+RBI License No. BLR-FFMC-0064-2023 GSTIN: 29AAHCP3008M1Z5, PAN: AAHCP3008M
+
+Bill No: PS/434 CASH MEMO Date : 07/08/2026
+
+We have sold today Foreign currencies to Mrs/Miss/Mr. DEEPTHI RAJESH KUMAR DARLA
+26 ANJANEEYA TEMPLE LINK ROAD SESHADRIPURAM BANGALORE
+
+holder of PAN No BYUPD4140H , Passport No V7974924 dated 08/03/2022
+Nationality INDIAN proceeding to UNITED KINGDOM
+against Indian Rupees as given below
+Currency Name From# Qty Deno Amount Ex.Rate | INR Value
+STERLING POUND 2000.00} 129.800000 259600.00
+SAC Code under GST TAXABLE VALUE Total 259600.00
+997157 Rs.1798.00
+Pay Mode __Chq.No Date Bank Name Amount SGST 9% on Rs.1798.00 161.82
+IRTGS/NEFT 07/08/2026 130007.00
+IRTGS/NEFT 07/08/2026 129917.00 CGST 9% on Rs.1798.00 161.82
+Round off 0.36
+TOTAL AMOUNT 259924.00
+AMOUNT PAYABLE 259924.00
+
+Rs. Two Lakh Fifty Nine Thousand Nine Hundred and Twenty Four only
+Signature of Buyer For PACIFIC EXCHANGE PVT LTD.,
+
+FORM A2 and Application cum Declaration for purchase of foreign exchange under Liberalised Remittance Scheme (LRS) as amended by RBI vide circular
+P. (DIR Series) Circular No.106 dated June 1,2015 for INDIAN PASSPORT HOLDERS
+
+Date : 07/08/2026
+
+To
+The Branch Manager
+PACIFIC EXCHANGE PVT LTD.,
+MYSORE
+
+Dear Sir/Madam,
+Subject: Release of Foreign Exchange for Private Visit purpose
+
+1. Details of Applicant / Remitter
+
+Applicant Name = DEEPTHI RAJESH KUMAR DARLA Date of Birth : 28/10/1995
+Address 26 ANJANEEYA TEMPLE LINK, ROAD SESHADRIPURAM
+BANGALORE
+Telephone No. Mobile No : Email Address :
+Nationality INDIAN Residential Status : PAN No: BYUPD4140H
+Passport No v7974924, Date of Issue : 08/03/2022 Date of Expiry: 07/03/2032 Place of Issue : BANGALORE
+
+2. Foreign exchange amount to be released / remitted (Please provide the exact split)
+
+CN : GBP 2000
+Equivalent to Rs. 259600 Purpose Code $0306, Other Travel (Including Holiday)
+Country of Travel UNITED KINGDOM Date of Travel 12/08/2026
+
+Source of Funds DEPENDANT
+
+3. Details of the remittance made / transaction effected under the LRS in the current financial year :
+
+FCN & Equivalent to Equivalent to Name and address of AD branch/FFMC
+S/N Date Amount Rs. USD through which the transaction has been effected
+Nil
+
+Declaration cum undertaking
+|, the undersigned, hereby declare that the total amount of foreign exchange purchased from or remitted through, all sources in India during the financial year
+as per item no. 3 of the Application, including the current transaction is within the overall limit of USD 250,000/- (US Dollar Two Hundred and Fifty Thousand
+Only), which is the limit prescribed by the Reserve Bank of India for the said purpose and certify that the source of funds for making the said remittance
+belong to me and the foreign exchange shall not be used for prohibited purposes. The transaction details of which are mentioned above does not involve, and
+is not designed for the purpose of any contravention or evasion of the provisions of the FEMA 1999 Act or any Rule, Regulation, Notification, Direction or
+Order made there under, | also hereby agree and undertake to provide such information / documents as will reasonably satify you about this transaction in
+terms of this declaration. | shall be responsible and liable for any incorrect information provided by me.
+
+1. Cash Rs. If applicant is minor
+Signature of Person(s) undertaking foreign visit Signature of natural guardian of the applicant
+Name: Name:
+
+Relationship with
+
+the Applicant:
+
+Certificate by the Authorised Dealer
+
+This is to certify that the remitance is not being made by/to ineligible entities and that the remirrance is in conformity with the instructions issued by the
+Reserve Bank from time to time under the Scheme. | have verified KYC documents in original
+
+Name and designation of the authorised official:
+
+Stamp and seal
+
+Signature Date Place
+
+

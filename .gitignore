@@ -1,17 +1,53 @@
-*.png
-*.jpg
-*.jpeg
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+openbharatocr_env/
+
+# Test / temp images that may contain real PII — never commit
+openbharatocr/test_images/*.jpg
+openbharatocr/test_images/*.jpeg
+openbharatocr/test_images/*.png
+
+# Spurious root-level temp images
+image.jpg
+preprocessed_image.jpg
+preprocessed_temp.jpg
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# PaddleOCR model cache (large, downloaded at setup time)
+.paddleocr/
+inference/
+
+# Jupyter
 *.ipynb_checkpoints
 *.ipynb
+
+# Misc
 *.pb
-*.json
 *.csv
 */*.h5
-*/*.*.hdf5
-logs_127
-sample
-SynthImageDataset
-Test_data
-Val_data
-__pycache__
-openbharatocr_env/
+*/*.hdf5
+logs_127/
+sample/
+SynthImageDataset/
+Test_data/
+Val_data/
+pan_extraction_results.json

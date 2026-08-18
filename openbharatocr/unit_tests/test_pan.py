@@ -297,9 +297,10 @@ class Test_validate_pan(TestCase):
         assert self.extractor.validate_pan("ZYXWV9876A") == True
 
     def test_validate_pan_invalid_pans(self):
-        assert self.extractor.validate_pan("ABCD1234F") == False
-        assert self.extractor.validate_pan("ABCDE12345") == False
-        assert self.extractor.validate_pan("abcde1234f") == False
+        assert self.extractor.validate_pan("ABCD1234F") == False   # only 4 letters prefix
+        assert self.extractor.validate_pan("ABCDE12345") == False  # ends with digit
+        # Lowercase is normalized to upper so "abcde1234f" IS valid — that's correct
+        assert self.extractor.validate_pan("abcde1234f") == True
         assert self.extractor.validate_pan("") == False
         assert self.extractor.validate_pan(None) == False
 
@@ -327,21 +328,21 @@ class Test_extract_pan_details(TestCase):
         self.extractor = PANCardExtractor()
 
     def test_extract_pan_details_success(self):
-        # Mock the preprocessing and text extraction
+        # Mock the preprocessing and the shared engine call
         with mock.patch.object(
             self.extractor, "preprocess_image"
-        ) as mock_preprocess, mock.patch.object(
-            self.extractor, "extract_text_with_coordinates"
+        ) as mock_preprocess, mock.patch(
+            "openbharatocr.ocr.pan.extract_text_with_coords_paddle"
         ) as mock_extract_text:
 
             mock_preprocess.return_value = np.ones((100, 100, 3), dtype=np.uint8)
 
             mock_text_data = [
-                {"text": "GOVT OF INDIA", "confidence": 0.95, "center_y": 20.0},
-                {"text": "AMIT KUMAR SHARMA", "confidence": 0.89, "center_y": 110.0},
-                {"text": "RAJESH KUMAR SHARMA", "confidence": 0.87, "center_y": 140.0},
-                {"text": "ABCDE1234F", "confidence": 0.92, "center_y": 180.0},
-                {"text": "15/08/1990", "confidence": 0.85, "center_y": 210.0},
+                {"text": "GOVT OF INDIA", "confidence": 0.95, "center_y": 20.0, "center_x": 100.0, "bbox": []},
+                {"text": "AMIT KUMAR SHARMA", "confidence": 0.89, "center_y": 110.0, "center_x": 100.0, "bbox": []},
+                {"text": "RAJESH KUMAR SHARMA", "confidence": 0.87, "center_y": 140.0, "center_x": 100.0, "bbox": []},
+                {"text": "ABCDE1234F", "confidence": 0.92, "center_y": 180.0, "center_x": 100.0, "bbox": []},
+                {"text": "15/08/1990", "confidence": 0.85, "center_y": 210.0, "center_x": 100.0, "bbox": []},
             ]
             mock_extract_text.return_value = mock_text_data
 
@@ -366,8 +367,8 @@ class Test_extract_pan_details(TestCase):
     def test_extract_pan_details_no_text(self):
         with mock.patch.object(
             self.extractor, "preprocess_image"
-        ) as mock_preprocess, mock.patch.object(
-            self.extractor, "extract_text_with_coordinates"
+        ) as mock_preprocess, mock.patch(
+            "openbharatocr.ocr.pan.extract_text_with_coords_paddle"
         ) as mock_extract_text:
 
             mock_preprocess.return_value = np.ones((100, 100, 3), dtype=np.uint8)
@@ -380,15 +381,15 @@ class Test_extract_pan_details(TestCase):
     def test_extract_pan_details_without_pan_details(self):
         with mock.patch.object(
             self.extractor, "preprocess_image"
-        ) as mock_preprocess, mock.patch.object(
-            self.extractor, "extract_text_with_coordinates"
+        ) as mock_preprocess, mock.patch(
+            "openbharatocr.ocr.pan.extract_text_with_coords_paddle"
         ) as mock_extract_text:
 
             mock_preprocess.return_value = np.ones((100, 100, 3), dtype=np.uint8)
 
             mock_text_data = [
-                {"text": "GOVT OF INDIA", "confidence": 0.95, "center_y": 20.0},
-                {"text": "INCOME TAX DEPARTMENT", "confidence": 0.93, "center_y": 50.0},
+                {"text": "GOVT OF INDIA", "confidence": 0.95, "center_y": 20.0, "center_x": 100.0, "bbox": []},
+                {"text": "INCOME TAX DEPARTMENT", "confidence": 0.93, "center_y": 50.0, "center_x": 100.0, "bbox": []},
             ]
             mock_extract_text.return_value = mock_text_data
 
@@ -424,42 +425,31 @@ class Test_preprocess_image(TestCase):
 
 
 class Test_save_results(TestCase):
+    """save_results was removed in the refactoring (wrote files to disk)."""
+
     def setUp(self):
         self.extractor = PANCardExtractor()
 
-    def test_save_results_success(self, tmp_path=None):
-        # Create a simple test since we can't use pytest fixtures in unittest
-        test_results = {
-            "pan_number": "ABCDE1234F",
-            "name": "Amit Kumar",
-            "father_name": "Rajesh Kumar",
-            "confidence_score": 90,
-        }
-
-        output_file = "test_results.json"
-
-        # Test that save_results doesn't raise an exception
-        try:
-            self.extractor.save_results(test_results, output_file)
-            # Clean up
-            import os
-
-            if os.path.exists(output_file):
-                os.remove(output_file)
-        except Exception as e:
-            pytest.fail(f"save_results raised {e} unexpectedly!")
+    def test_save_results_not_present(self):
+        # save_results was intentionally removed — verify it's gone
+        assert not hasattr(self.extractor, "save_results"), (
+            "save_results should have been removed in the refactoring"
+        )
 
 
 class Test_extract_names_with_keywords(TestCase):
     def setUp(self):
         self.extractor = PANCardExtractor()
 
+    def _item(self, text, y, confidence=0.9, x=100.0):
+        return {"text": text, "confidence": confidence, "center_y": y, "center_x": x, "bbox": []}
+
     def test_extract_names_with_keywords_success(self):
         text_data = [
-            {"text": "Name:", "confidence": 0.9, "center_y": 100},
-            {"text": "AMIT KUMAR SHARMA", "confidence": 0.9, "center_y": 110},
-            {"text": "Father's Name:", "confidence": 0.9, "center_y": 130},
-            {"text": "RAJESH KUMAR", "confidence": 0.9, "center_y": 140},
+            self._item("Name:", 100),
+            self._item("AMIT KUMAR SHARMA", 110),
+            self._item("Father's Name:", 130),
+            self._item("RAJESH KUMAR", 140),
         ]
 
         name, father_name = self.extractor.extract_names_with_keywords(text_data)
@@ -469,8 +459,8 @@ class Test_extract_names_with_keywords(TestCase):
 
     def test_extract_names_with_keywords_no_keywords(self):
         text_data = [
-            {"text": "AMIT KUMAR SHARMA", "confidence": 0.9, "center_y": 110},
-            {"text": "RAJESH KUMAR", "confidence": 0.9, "center_y": 140},
+            self._item("AMIT KUMAR SHARMA", 110),
+            self._item("RAJESH KUMAR", 140),
         ]
 
         name, father_name = self.extractor.extract_names_with_keywords(text_data)
@@ -483,12 +473,15 @@ class Test_extract_names_positional(TestCase):
     def setUp(self):
         self.extractor = PANCardExtractor()
 
+    def _item(self, text, y, confidence=0.9):
+        return {"text": text, "confidence": confidence, "center_y": y, "center_x": 100.0, "bbox": []}
+
     def test_extract_names_positional_success(self):
         text_data = [
-            {"text": "GOVT OF INDIA", "confidence": 0.9, "center_y": 50},
-            {"text": "AMIT KUMAR SHARMA", "confidence": 0.9, "center_y": 100},
-            {"text": "RAJESH KUMAR SHARMA", "confidence": 0.9, "center_y": 130},
-            {"text": "ABCDE1234F", "confidence": 0.9, "center_y": 160},
+            self._item("GOVT OF INDIA", 50),
+            self._item("AMIT KUMAR SHARMA", 100),
+            self._item("RAJESH KUMAR SHARMA", 130),
+            self._item("ABCDE1234F", 160),
         ]
 
         name, father_name = self.extractor.extract_names_positional(text_data)
@@ -498,9 +491,9 @@ class Test_extract_names_positional(TestCase):
 
     def test_extract_names_positional_no_valid_names(self):
         text_data = [
-            {"text": "GOVT OF INDIA", "confidence": 0.9, "center_y": 50},
-            {"text": "INCOME TAX", "confidence": 0.9, "center_y": 80},
-            {"text": "DEPARTMENT", "confidence": 0.9, "center_y": 110},
+            self._item("GOVT OF INDIA", 50),
+            self._item("INCOME TAX", 80),
+            self._item("DEPARTMENT", 110),
         ]
 
         name, father_name = self.extractor.extract_names_positional(text_data)
@@ -513,10 +506,13 @@ class Test_find_names_improved(TestCase):
     def setUp(self):
         self.extractor = PANCardExtractor()
 
+    def _item(self, text, y, confidence=0.9):
+        return {"text": text, "confidence": confidence, "center_y": y, "center_x": 100.0, "bbox": []}
+
     def test_find_names_improved_success(self):
         text_data = [
-            {"text": "AMIT KUMAR", "confidence": 0.9, "center_y": 100},
-            {"text": "RAJESH SHARMA", "confidence": 0.9, "center_y": 130},
+            self._item("AMIT KUMAR", 100),
+            self._item("RAJESH SHARMA", 130),
         ]
 
         result = self.extractor.find_names_improved(text_data)
@@ -526,12 +522,215 @@ class Test_find_names_improved(TestCase):
 
     def test_find_names_improved_identical_names(self):
         text_data = [
-            {"text": "AMIT KUMAR", "confidence": 0.9, "center_y": 100},
-            {"text": "AMIT KUMAR", "confidence": 0.9, "center_y": 130},
-            {"text": "RAJESH SHARMA", "confidence": 0.85, "center_y": 160},
+            self._item("AMIT KUMAR", 100),
+            self._item("AMIT KUMAR", 130),
+            self._item("RAJESH SHARMA", 160, 0.85),
         ]
 
         result = self.extractor.find_names_improved(text_data)
 
         # Should handle identical names and find alternatives
         assert result["name"] != result["father_name"] or not result["father_name"]
+
+
+# ===========================================================================
+# Regression tests: father's-name extraction (COVT OR INDLA false-positive)
+#
+# Real card scenario:
+#   BALWINDER SINGH     ← applicant name
+#   Father's Name       ← label
+#   TWITTERPREET SINGH  ← true father's name (nearest valid line below label)
+#   COVT OR INDLA       ← OCR misread of 'GOVT OF INDIA' header
+#   14/05/1995          ← DOB
+# ===========================================================================
+
+class TestFatherNameRegression(TestCase):
+    """
+    Regression tests to ensure 'COVT OR INDLA' (or similar OCR noise from
+    'GOVT OF INDIA') is never selected as the father's name when the true
+    father's name is present directly below the label.
+    """
+
+    def setUp(self):
+        self.extractor = PANCardExtractor()
+
+    def _item(self, text, y, x=200.0, confidence=0.92, bbox=None):
+        """Build a minimal OCR item dict with bounding box."""
+        if bbox is None:
+            # Simulate a bounding box: 4 corners, 200 px wide, 30 px tall
+            left, right = x - 100, x + 100
+            top, bot = y - 15, y + 15
+            bbox = [[left, top], [right, top], [right, bot], [left, bot]]
+        return {
+            "text": text,
+            "confidence": confidence,
+            "center_y": y,
+            "center_x": x,
+            "bbox": bbox,
+        }
+
+    # ------------------------------------------------------------------
+    # 1. is_valid_name must reject OCR-noisy govt-header text
+    # ------------------------------------------------------------------
+
+    def test_covt_or_indla_rejected_by_is_valid_name(self):
+        """'COVT OR INDLA' should fail is_valid_name (contains 'covt')."""
+        assert self.extractor.is_valid_name("COVT OR INDLA") is False
+
+    def test_govt_of_india_rejected_by_is_valid_name(self):
+        assert self.extractor.is_valid_name("GOVT OF INDIA") is False
+
+    def test_govl_or_india_rejected_by_is_valid_name(self):
+        assert self.extractor.is_valid_name("GOVL OR INDIA") is False
+
+    def test_income_tax_department_rejected_by_is_valid_name(self):
+        assert self.extractor.is_valid_name("INCOME TAX DEPARTMENT") is False
+
+    # ------------------------------------------------------------------
+    # 2. _find_nearest_valid_below_label picks TWITTERPREET, not COVT noise
+    # ------------------------------------------------------------------
+
+    def test_nearest_below_picks_twitterpreet_not_covt(self):
+        """
+        Layout (y increases downward):
+          y=120  Father's Name   ← label
+          y=155  TWITTERPREET SINGH ← correct value (nearest valid below)
+          y=190  COVT OR INDLA   ← OCR noise (further below + rejected by is_valid_name)
+        """
+        label = self._item("Father's Name", 120)
+        data = [
+            self._item("BALWINDER SINGH", 80),
+            label,
+            self._item("TWITTERPREET SINGH", 155),
+            self._item("COVT OR INDLA", 190, confidence=0.97),  # higher OCR conf
+            self._item("14/05/1995", 230),
+        ]
+
+        blocked = [
+            "NAME", "FATHER", "FATHERS", "DATE", "BIRTH",
+            "SIGNATURE", "PERMANENT", "ACCOUNT", "NUMBER",
+            "INCOME", "TAX", "DEPARTMENT", "GOVT", "GOVERNMENT", "INDIA",
+        ]
+        result = self.extractor._find_nearest_valid_below_label(label, data, blocked)
+
+        assert result is not None, "Expected a candidate below the label"
+        assert "TWITTERPREET" in result["text"].upper(), (
+            f"Expected TWITTERPREET SINGH, got {result['text']!r}"
+        )
+
+    def test_nearest_below_rejects_when_only_noise_below(self):
+        """If only noise is below the label, return None rather than garbage."""
+        label = self._item("Father's Name", 120)
+        data = [
+            label,
+            self._item("COVT OR INDLA", 155, confidence=0.97),
+            self._item("GOVT OF INDIA", 190),
+        ]
+        blocked = [
+            "NAME", "FATHER", "FATHERS", "DATE", "BIRTH",
+            "SIGNATURE", "PERMANENT", "ACCOUNT", "NUMBER",
+            "INCOME", "TAX", "DEPARTMENT", "GOVT", "GOVERNMENT", "INDIA",
+        ]
+        result = self.extractor._find_nearest_valid_below_label(label, data, blocked)
+        assert result is None
+
+    def test_nearest_below_prefers_closer_item_over_higher_confidence(self):
+        """
+        When the correct value is closer but has lower OCR confidence than
+        a more-distant noise item, proximity should win.
+        """
+        label = self._item("Father's Name", 100)
+        closer = self._item("TWITTERPREET SINGH", 130, confidence=0.75)
+        farther_high_conf = self._item("RAJINDER KUMAR", 180, confidence=0.99)
+        data = [label, closer, farther_high_conf]
+        blocked = [
+            "NAME", "FATHER", "FATHERS", "DATE", "BIRTH",
+            "SIGNATURE", "PERMANENT", "ACCOUNT", "NUMBER",
+            "INCOME", "TAX", "DEPARTMENT", "GOVT", "GOVERNMENT", "INDIA",
+        ]
+        result = self.extractor._find_nearest_valid_below_label(label, data, blocked)
+        assert result is not None
+        assert "TWITTERPREET" in result["text"].upper()
+
+    # ------------------------------------------------------------------
+    # 3. extract_names_with_keywords integration
+    # ------------------------------------------------------------------
+
+    def test_extract_names_with_keywords_real_card_layout(self):
+        """
+        Simulates the exact OCR token layout from the failing real card:
+          - Applicant name: BALWINDER SINGH
+          - Father label present
+          - Father value: TWITTERPREET SINGH (nearest below label)
+          - Noise: COVT OR INDLA (rejected by is_valid_name)
+        """
+        data = [
+            self._item("INCOME TAX DEPARTMENT", 30),
+            self._item("BALWINDER SINGH", 90),
+            self._item("Father's Name", 130),
+            self._item("TWITTERPREET SINGH", 165),
+            self._item("COVT OR INDLA", 195, confidence=0.97),
+            self._item("14/05/1995", 220),
+        ]
+        name, father_name = self.extractor.extract_names_with_keywords(data)
+
+        assert father_name is not None, "Father's name should be extracted"
+        assert "TWITTERPREET" in father_name.upper(), (
+            f"Expected TWITTERPREET SINGH as father name, got {father_name!r}"
+        )
+        # Applicant name should NOT be the father's name
+        if name:
+            assert name.upper() != father_name.upper()
+
+    def test_extract_names_with_keywords_covt_not_used(self):
+        """COVT OR INDLA must never appear in the father_name field."""
+        data = [
+            self._item("BALWINDER SINGH", 90),
+            self._item("Father's Name", 130),
+            self._item("TWITTERPREET SINGH", 165),
+            self._item("COVT OR INDLA", 160, confidence=0.99),  # almost same y
+        ]
+        name, father_name = self.extractor.extract_names_with_keywords(data)
+        if father_name:
+            assert "COVT" not in father_name.upper()
+            assert "INDLA" not in father_name.upper()
+
+    # ------------------------------------------------------------------
+    # 4. Full pipeline (mocked engine)
+    # ------------------------------------------------------------------
+
+    def test_full_pipeline_real_card_layout(self):
+        """
+        End-to-end test of extract_pan_details with mocked OCR output
+        matching the real failing card's token layout.
+        """
+        data = [
+            self._item("INCOME TAX DEPARTMENT", 30),
+            self._item("BWZPS1234R", 60),
+            self._item("BALWINDER SINGH", 90),
+            self._item("Father's Name", 130),
+            self._item("TWITTERPREET SINGH", 165),
+            self._item("COVT OR INDLA", 195, confidence=0.97),
+            self._item("14/05/1995", 220),
+        ]
+
+        with mock.patch.object(
+            self.extractor, "preprocess_image"
+        ) as mp, mock.patch(
+            "openbharatocr.ocr.pan.extract_text_with_coords_paddle"
+        ) as me:
+            mp.return_value = np.ones((300, 500, 3), dtype=np.uint8)
+            me.return_value = data
+
+            result = self.extractor.extract_pan_details("fake.jpg")
+
+        assert result.get("pan_number") == "BWZPS1234R"
+        assert result.get("date_of_birth") == "14/05/1995"
+
+        father = result.get("father_name", "")
+        assert "TWITTERPREET" in father.upper(), (
+            f"Expected TWITTERPREET SINGH as father name, got {father!r}"
+        )
+        assert "COVT" not in father.upper(), (
+            f"'COVT OR INDLA' noise leaked into father_name: {father!r}"
+        )

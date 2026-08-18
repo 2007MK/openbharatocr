@@ -296,8 +296,6 @@ class VehicleRegistrationExtractor:
             extracted_text = self.extract_text_easyocr(preprocessed_image)
             cleaned_text = self.clean_and_segment_text(extracted_text)
 
-            print("Cleaned and Segmented Text:\n", cleaned_text[:1000], "...\n")
-
             dates = self.extract_dates(cleaned_text)
 
             details = {
@@ -318,7 +316,8 @@ class VehicleRegistrationExtractor:
 
             return details
         except Exception as e:
-            print(f"Error processing image: {e}")
+            import logging
+            logging.getLogger(__name__).exception("Error processing vehicle registration image.")
             return {}
 
 
@@ -327,10 +326,13 @@ def vehicle_registration(image_path):
     return extractor.extract_vehicle_registration_details(image_path)
 
 
-if __name__ == "__main__":
-    image_path = "/home/rishabh/openbharatocr/openbharatocr/ocr/VR2.jpeg"
-    details = vehicle_registration(image_path)
 
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: python vehicle_registration.py <image_path>")
+        sys.exit(1)
+    details = vehicle_registration(sys.argv[1])
     print("\n" + "=" * 60)
     print("EXTRACTED VEHICLE REGISTRATION DETAILS")
     print("=" * 60)
